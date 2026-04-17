@@ -6,35 +6,95 @@ struct ContentView: View {
     @State private var screenRecordingButtonFrame = CGRect.zero
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Permiso")
-                .font(.system(size: 28, weight: .semibold))
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(nsColor: .windowBackgroundColor),
+                    Color(nsColor: .underPageBackgroundColor)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
-            Text("Open a privacy panel and show a drag helper for this app.")
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Permiso Sample")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
 
-            HStack(spacing: 12) {
-                Button("Accessibility") {
-                    PermisoAssistant.shared.present(
-                        panel: .accessibility,
-                        sourceFrameInScreen: accessibilityButtonFrame
-                    )
+                    Text("Test macOS permission flows")
+                        .font(.system(size: 32, weight: .semibold))
+                        .tracking(-0.6)
+
+                    Text("Open System Settings and launch the drag helper from the action you want to test.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: 480, alignment: .leading)
                 }
-                .background(ScreenFrameReader(frameInScreen: $accessibilityButtonFrame))
 
-                Button("Screen Recording") {
-                    PermisoAssistant.shared.present(
-                        panel: .screenRecording,
-                        sourceFrameInScreen: screenRecordingButtonFrame
-                    )
+                HStack(spacing: 16) {
+                    PermissionButton(
+                        title: "Accessibility",
+                        subtitle: "Control your Mac",
+                        systemImage: "figure.wave",
+                        frameInScreen: $accessibilityButtonFrame
+                    ) {
+                        PermisoAssistant.shared.present(
+                            panel: .accessibility,
+                            sourceFrameInScreen: accessibilityButtonFrame
+                        )
+                    }
+
+                    PermissionButton(
+                        title: "Screen Recording",
+                        subtitle: "Capture the display",
+                        systemImage: "record.circle",
+                        frameInScreen: $screenRecordingButtonFrame
+                    ) {
+                        PermisoAssistant.shared.present(
+                            panel: .screenRecording,
+                            sourceFrameInScreen: screenRecordingButtonFrame
+                        )
+                    }
                 }
-                .background(ScreenFrameReader(frameInScreen: $screenRecordingButtonFrame))
             }
-
-            Spacer()
+            .padding(32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct PermissionButton: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    @Binding var frameInScreen: CGRect
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 18) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 22, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .semibold))
+
+                    Text(subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
+            .padding(22)
+            .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        }
+        .buttonStyle(.glassProminent)
+        .controlSize(.large)
+        .background(ScreenFrameReader(frameInScreen: $frameInScreen))
     }
 }
 
