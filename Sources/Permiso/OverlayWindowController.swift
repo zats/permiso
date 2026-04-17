@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import QuartzCore
 
 final class OverlayWindowController: NSWindowController {
     private let windowSize = NSSize(width: 530, height: 109)
@@ -7,10 +8,11 @@ final class OverlayWindowController: NSWindowController {
     private let launchAnimationResponse: Double = 0.72
     private let launchAnimationDampingFraction: Double = 1.0
     private let initialAlpha: CGFloat = 0.9
-    private var launchTimer: Timer?
+    private var launchDisplayLink: CADisplayLink?
     private var launchStartTime: CFTimeInterval = 0
     private var launchFromFrame = NSRect.zero
     private var launchToFrame = NSRect.zero
+    private var isAnimatingLaunch = false
 
     init(hostApp: PermisoHostApp, panel: PermisoPanel, onBack: @escaping () -> Void) {
         let window = PassiveOverlayPanel(
@@ -42,12 +44,14 @@ final class OverlayWindowController: NSWindowController {
         let targetFrame = NSRect(origin: targetOrigin, size: windowSize)
 
         guard let sourceFrameInScreen, !sourceFrameInScreen.isEmpty else {
+            isAnimatingLaunch = false
             window.alphaValue = 1
             window.setFrame(targetFrame, display: false)
             window.orderFrontRegardless()
             return
         }
 
+        isAnimatingLaunch = true
         launchFromFrame = sourceFrameInScreen
         launchToFrame = targetFrame
         launchStartTime = CACurrentMediaTime()
@@ -57,24 +61,22 @@ final class OverlayWindowController: NSWindowController {
         window.orderFrontRegardless()
         stepLaunchAnimation()
 
-        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.stepLaunchAnimation()
-            }
-        }
-        launchTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
+        let displayLink = window.displayLink(target: self, selector: #selector(displayLinkDidFire(_:)))
+        displayLink.add(to: .main, forMode: .common)
+        launchDisplayLink = displayLink
     }
 
     func updatePosition(with settingsFrame: CGRect, visibleFrame: CGRect) {
         guard let window else { return }
         let origin = anchoredOrigin(for: settingsFrame, visibleFrame: visibleFrame)
         launchToFrame.origin = origin
+        guard !isAnimatingLaunch else { return }
         window.setFrameOrigin(origin)
         window.orderFrontRegardless()
     }
 
     func hide() {
+        isAnimatingLaunch = false
         stopLaunchAnimation()
         window?.orderOut(nil)
     }
@@ -97,6 +99,7 @@ final class OverlayWindowController: NSWindowController {
 
         let elapsed = max(0, CACurrentMediaTime() - launchStartTime)
         if elapsed >= launchAnimationDuration {
+            isAnimatingLaunch = false
             stopLaunchAnimation()
             window.alphaValue = 1
             window.setFrame(launchToFrame, display: true)
@@ -108,9 +111,14 @@ final class OverlayWindowController: NSWindowController {
         window.setFrame(curvedFrame(from: launchFromFrame, to: launchToFrame, progress: progress), display: true)
     }
 
+    @objc
+    private func displayLinkDidFire(_ displayLink: CADisplayLink) {
+        stepLaunchAnimation()
+    }
+
     private func stopLaunchAnimation() {
-        launchTimer?.invalidate()
-        launchTimer = nil
+        launchDisplayLink?.invalidate()
+        launchDisplayLink = nil
     }
 
     // Hopper shows the transition builder fed with 0.72 and 1.0; model it as a critically damped spring.
@@ -205,8 +213,8 @@ private final class OverlayContentView: NSView {
         materialView.wantsLayer = true
         materialView.layer?.cornerRadius = 18
         materialView.layer?.masksToBounds = true
-        materialView.layer?.borderWidth = 1
-        materialView.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
+        materialView.layer?.borderWidth = 0.5
+        materialView.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.18).cgColor
         addSubview(materialView)
 
         let tintView = NSView()

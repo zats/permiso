@@ -7,6 +7,7 @@ public final class PermisoAssistant {
 
     private var overlayController: OverlayWindowController?
     private var trackingTimer: Timer?
+    private var activationObserver: NSObjectProtocol?
     private var activePanel: PermisoPanel?
     private var pendingSourceFrameInScreen: CGRect?
     private var didPresentCurrentOverlay = false
@@ -31,6 +32,10 @@ public final class PermisoAssistant {
     public func dismiss() {
         trackingTimer?.invalidate()
         trackingTimer = nil
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
         overlayController?.close()
         overlayController = nil
         activePanel = nil
@@ -41,6 +46,18 @@ public final class PermisoAssistant {
     private func startTracking() {
         trackingTimer?.invalidate()
         trackingTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshPosition()
+            }
+        }
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+        }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshPosition()
             }
