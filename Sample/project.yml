@@ -12,6 +12,8 @@ targets:
     deploymentTarget: "26.0"
     sources:
       - PermisoSample
+    resources:
+      - PermisoSample/AppIcon.icns
     info:
       path: PermisoSample/Info.plist
     settings:

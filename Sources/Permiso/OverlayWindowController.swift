@@ -3,7 +3,14 @@ import Foundation
 
 final class OverlayWindowController: NSWindowController {
     private let windowSize = NSSize(width: 530, height: 109)
-    private let animationDuration: TimeInterval = 0.24
+    private let launchAnimationDuration: TimeInterval = 0.72
+    private let launchAnimationResponse: Double = 0.72
+    private let launchAnimationDampingFraction: Double = 1.0
+    private let initialAlpha: CGFloat = 0.9
+    private var launchTimer: Timer?
+    private var launchStartTime: CFTimeInterval = 0
+    private var launchFromFrame = NSRect.zero
+    private var launchToFrame = NSRect.zero
 
     init(hostApp: PermisoHostApp, panel: PermisoPanel, onBack: @escaping () -> Void) {
         let window = PassiveOverlayPanel(
@@ -23,11 +30,13 @@ final class OverlayWindowController: NSWindowController {
     }
 
     override func close() {
+        stopLaunchAnimation()
         window?.orderOut(nil)
         super.close()
     }
 
     func present(from sourceFrameInScreen: CGRect?, settingsFrame: CGRect, visibleFrame: CGRect) {
+        stopLaunchAnimation()
         guard let window else { return }
         let targetOrigin = anchoredOrigin(for: settingsFrame, visibleFrame: visibleFrame)
         let targetFrame = NSRect(origin: targetOrigin, size: windowSize)
@@ -39,26 +48,34 @@ final class OverlayWindowController: NSWindowController {
             return
         }
 
-        window.alphaValue = 0.94
+        launchFromFrame = sourceFrameInScreen
+        launchToFrame = targetFrame
+        launchStartTime = CACurrentMediaTime()
+
+        window.alphaValue = initialAlpha
         window.setFrame(sourceFrameInScreen, display: false)
         window.orderFrontRegardless()
+        stepLaunchAnimation()
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = animationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.animator().setFrame(targetFrame, display: true)
-            window.animator().alphaValue = 1
+        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.stepLaunchAnimation()
+            }
         }
+        launchTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     func updatePosition(with settingsFrame: CGRect, visibleFrame: CGRect) {
         guard let window else { return }
         let origin = anchoredOrigin(for: settingsFrame, visibleFrame: visibleFrame)
+        launchToFrame.origin = origin
         window.setFrameOrigin(origin)
         window.orderFrontRegardless()
     }
 
     func hide() {
+        stopLaunchAnimation()
         window?.orderOut(nil)
     }
 
@@ -70,6 +87,75 @@ final class OverlayWindowController: NSWindowController {
         window.hidesOnDeactivate = false
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         window.animationBehavior = .none
+    }
+
+    private func stepLaunchAnimation() {
+        guard let window else {
+            stopLaunchAnimation()
+            return
+        }
+
+        let elapsed = max(0, CACurrentMediaTime() - launchStartTime)
+        if elapsed >= launchAnimationDuration {
+            stopLaunchAnimation()
+            window.alphaValue = 1
+            window.setFrame(launchToFrame, display: true)
+            return
+        }
+
+        let progress = springProgress(at: elapsed)
+        window.alphaValue = initialAlpha + ((1 - initialAlpha) * progress)
+        window.setFrame(curvedFrame(from: launchFromFrame, to: launchToFrame, progress: progress), display: true)
+    }
+
+    private func stopLaunchAnimation() {
+        launchTimer?.invalidate()
+        launchTimer = nil
+    }
+
+    // Hopper shows the transition builder fed with 0.72 and 1.0; model it as a critically damped spring.
+    private func springProgress(at elapsed: TimeInterval) -> CGFloat {
+        let omega = (2 * Double.pi) / launchAnimationResponse
+        let t = max(0, elapsed)
+        let progress: Double
+
+        if abs(launchAnimationDampingFraction - 1) < 0.0001 {
+            progress = 1 - exp(-omega * t) * (1 + (omega * t))
+        } else {
+            progress = min(1, t / launchAnimationDuration)
+        }
+
+        return min(max(progress, 0), 1)
+    }
+
+    private func curvedFrame(from: NSRect, to: NSRect, progress: CGFloat) -> NSRect {
+        let size = NSSize(
+            width: from.size.width + ((to.size.width - from.size.width) * progress),
+            height: from.size.height + ((to.size.height - from.size.height) * progress)
+        )
+
+        let startCenter = CGPoint(x: from.midX, y: from.midY)
+        let endCenter = CGPoint(x: to.midX, y: to.midY)
+        let midPoint = CGPoint(
+            x: (startCenter.x + endCenter.x) * 0.5,
+            y: max(startCenter.y, endCenter.y)
+        )
+
+        let distance = hypot(endCenter.x - startCenter.x, endCenter.y - startCenter.y)
+        let lift = min(140, max(44, distance * 0.18))
+        let controlPoint = CGPoint(x: midPoint.x, y: midPoint.y + lift)
+        let inverse = 1 - progress
+        let center = CGPoint(
+            x: (inverse * inverse * startCenter.x) + (2 * inverse * progress * controlPoint.x) + (progress * progress * endCenter.x),
+            y: (inverse * inverse * startCenter.y) + (2 * inverse * progress * controlPoint.y) + (progress * progress * endCenter.y)
+        )
+
+        return NSRect(
+            x: center.x - (size.width * 0.5),
+            y: center.y - (size.height * 0.5),
+            width: size.width,
+            height: size.height
+        )
     }
 
     private func anchoredOrigin(for settingsFrame: CGRect, visibleFrame: CGRect) -> NSPoint {
