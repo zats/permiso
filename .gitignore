@@ -1,0 +1,5 @@
+.build
+.swiftpm
+Sample/PermisoSample.xcodeproj/project.xcworkspace/xcuserdata
+Sample/PermisoSample.xcodeproj/xcuserdata
+DerivedData
