@@ -61,6 +61,16 @@ enum SettingsWindowLocator {
         return windows.max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })
     }
 
+    static func frontmostFallbackWindow() -> SettingsWindowSnapshot? {
+        guard isSystemSettingsFrontmost else {
+            return nil
+        }
+
+        let visibleFrame = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1100, height: 800)
+        let frame = visibleFrame.insetBy(dx: 80, dy: 70)
+        return SettingsWindowSnapshot(pid: 0, frame: frame, visibleFrame: visibleFrame)
+    }
+
     private static func appKitGeometry(from cgFrame: CGRect) -> (frame: CGRect, visibleFrame: CGRect) {
         let screens = NSScreen.screens.compactMap { screen -> (frame: CGRect, visibleFrame: CGRect, cgBounds: CGRect)? in
             guard

@@ -66,7 +66,7 @@ public final class PermisoAssistant {
     }
 
     private func refreshPosition() {
-        guard let snapshot = SettingsWindowLocator.frontmostWindow() else {
+        guard let snapshot = SettingsWindowLocator.frontmostWindow() ?? SettingsWindowLocator.frontmostFallbackWindow() else {
             overlayController?.hide()
             return
         }

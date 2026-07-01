@@ -4,6 +4,7 @@ import Foundation
 public enum PermisoPanel: String, CaseIterable, Sendable {
     case accessibility = "Privacy_Accessibility"
     case screenRecording = "Privacy_ScreenCapture"
+    case appManagement = "Privacy_AppBundles"
 
     public var title: String {
         switch self {
@@ -11,6 +12,8 @@ public enum PermisoPanel: String, CaseIterable, Sendable {
             "Accessibility"
         case .screenRecording:
             "Screen Recording"
+        case .appManagement:
+            "App Management"
         }
     }
 
